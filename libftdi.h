@@ -17,8 +17,6 @@
 #ifndef __libftdi_h__
 #define __libftdi_h__
 
-#include <libusb.h>
-
 /** FTDI chip type */
 enum ftdi_chip_type { TYPE_AM=0, TYPE_BM=1, TYPE_2232C=2, TYPE_R=3, TYPE_2232H=4, TYPE_4232H=5, TYPE_232H=6 };
 /** Parity mode for ftdi_set_line_property() */
@@ -178,76 +176,6 @@ enum ftdi_module_detach_mode
     #define DEPRECATED(func) func
 #endif
 
-struct ftdi_transfer_control
-{
-    int completed;
-    unsigned char *buf;
-    int size;
-    int offset;
-    struct ftdi_context *ftdi;
-    struct libusb_transfer *transfer;
-};
-
-/**
-    \brief Main context structure for all libftdi functions.
-
-    Do not access directly if possible.
-*/
-struct ftdi_context
-{
-    /* USB specific */
-    /** libusb's context */
-    struct libusb_context *usb_ctx;
-    /** libusb's usb_dev_handle */
-    struct libusb_device_handle *usb_dev;
-    /** usb read timeout */
-    int usb_read_timeout;
-    /** usb write timeout */
-    int usb_write_timeout;
-
-    /* FTDI specific */
-    /** FTDI chip type */
-    enum ftdi_chip_type type;
-    /** baudrate */
-    int baudrate;
-    /** bitbang mode state */
-    unsigned char bitbang_enabled;
-    /** pointer to read buffer for ftdi_read_data */
-    unsigned char *readbuffer;
-    /** read buffer offset */
-    unsigned int readbuffer_offset;
-    /** number of remaining data in internal read buffer */
-    unsigned int readbuffer_remaining;
-    /** read buffer chunk size */
-    unsigned int readbuffer_chunksize;
-    /** write buffer chunk size */
-    unsigned int writebuffer_chunksize;
-    /** maximum packet size. Needed for filtering modem status bytes every n packets. */
-    unsigned int max_packet_size;
-
-    /* FTDI FT2232C requirecments */
-    /** FT2232C interface number: 0 or 1 */
-    int interface;   /* 0 or 1 */
-    /** FT2232C index number: 1 or 2 */
-    int index;       /* 1 or 2 */
-    /* Endpoints */
-    /** FT2232C end points: 1 or 2 */
-    int in_ep;
-    int out_ep;      /* 1 or 2 */
-
-    /** Bitbang mode. 1: (default) Normal bitbang mode, 2: FT2232C SPI bitbang mode */
-    unsigned char bitbang_mode;
-
-    /** Decoded eeprom structure */
-    struct ftdi_eeprom *eeprom;
-
-    /** String representation of last error */
-    char *error_str;
-
-    /** Defines behavior in case a kernel module is already attached to the device */
-    enum ftdi_module_detach_mode module_detach_mode;
-};
-
 /**
  List all handled EEPROM values.
    Append future new values only at the end to provide API/ABI stability*/
@@ -310,16 +238,6 @@ enum ftdi_eeprom_value
     CHANNEL_D_RS485    = 54,
 };
 
-/**
-    \brief list of usb devices created by ftdi_usb_find_all()
-*/
-struct ftdi_device_list
-{
-    /** pointer to next entry */
-    struct ftdi_device_list *next;
-    /** pointer to libusb's usb_device */
-    struct libusb_device *dev;
-};
 #define FT1284_CLK_IDLE_STATE 0x01
 #define FT1284_DATA_LSB       0x02 /* DS_FT232H 1.3 amd ftd2xx.h 1.0.4 disagree here*/
 #define FT1284_FLOW_CONTROL   0x04
@@ -380,151 +298,5 @@ enum ftdi_cbush_func {/* FIXME: Recheck value, especially the last */
 /** High current drive. */
 #define HIGH_CURRENT_DRIVE   0x10
 #define HIGH_CURRENT_DRIVE_R 0x04
-
-/**
-    \brief Progress Info for streaming read
-*/
-struct size_and_time
-{
-        uint64_t totalBytes;
-        struct timeval time;
-};
-
-typedef struct
-{
-    struct size_and_time first;
-    struct size_and_time prev;
-    struct size_and_time current;
-    double totalTime;
-    double totalRate;
-    double currentRate;
-} FTDIProgressInfo;
-
-typedef int (FTDIStreamCallback)(uint8_t *buffer, int length,
-                                 FTDIProgressInfo *progress, void *userdata);
-
-/**
- * Provide libftdi version information
- * major: Library major version
- * minor: Library minor version
- * micro: Currently unused, ight get used for hotfixes.
- * version_str: Version as (static) string
- * snapshot_str: Git snapshot version if known. Otherwise "unknown" or empty string.
-*/
-struct ftdi_version_info
-{
-    int major;
-    int minor;
-    int micro;
-    const char *version_str;
-    const char *snapshot_str;
-};
-
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
-    int ftdi_init(struct ftdi_context *ftdi);
-    struct ftdi_context *ftdi_new(void);
-    int ftdi_set_interface(struct ftdi_context *ftdi, enum ftdi_interface interface);
-
-    void ftdi_deinit(struct ftdi_context *ftdi);
-    void ftdi_free(struct ftdi_context *ftdi);
-    void ftdi_set_usbdev (struct ftdi_context *ftdi, struct libusb_device_handle *usbdev);
-
-    struct ftdi_version_info ftdi_get_library_version();
-
-    int ftdi_usb_find_all(struct ftdi_context *ftdi, struct ftdi_device_list **devlist,
-                          int vendor, int product);
-    void ftdi_list_free(struct ftdi_device_list **devlist);
-    void ftdi_list_free2(struct ftdi_device_list *devlist);
-    int ftdi_usb_get_strings(struct ftdi_context *ftdi, struct libusb_device *dev,
-                             char * manufacturer, int mnf_len,
-                             char * description, int desc_len,
-                             char * serial, int serial_len);
-
-    int ftdi_usb_open(struct ftdi_context *ftdi, int vendor, int product);
-    int ftdi_usb_open_desc(struct ftdi_context *ftdi, int vendor, int product,
-                           const char* description, const char* serial);
-    int ftdi_usb_open_desc_index(struct ftdi_context *ftdi, int vendor, int product,
-                           const char* description, const char* serial, unsigned int index);
-    int ftdi_usb_open_dev(struct ftdi_context *ftdi, struct libusb_device *dev);
-    int ftdi_usb_open_string(struct ftdi_context *ftdi, const char* description);
-
-    int ftdi_usb_close(struct ftdi_context *ftdi);
-    int ftdi_usb_reset(struct ftdi_context *ftdi);
-    int ftdi_usb_purge_rx_buffer(struct ftdi_context *ftdi);
-    int ftdi_usb_purge_tx_buffer(struct ftdi_context *ftdi);
-    int ftdi_usb_purge_buffers(struct ftdi_context *ftdi);
-
-    int ftdi_set_baudrate(struct ftdi_context *ftdi, int baudrate);
-    int ftdi_set_line_property(struct ftdi_context *ftdi, enum ftdi_bits_type bits,
-                               enum ftdi_stopbits_type sbit, enum ftdi_parity_type parity);
-    int ftdi_set_line_property2(struct ftdi_context *ftdi, enum ftdi_bits_type bits,
-                                enum ftdi_stopbits_type sbit, enum ftdi_parity_type parity,
-                                enum ftdi_break_type break_type);
-
-    int ftdi_read_data(struct ftdi_context *ftdi, unsigned char *buf, int size);
-    int ftdi_read_data_set_chunksize(struct ftdi_context *ftdi, unsigned int chunksize);
-    int ftdi_read_data_get_chunksize(struct ftdi_context *ftdi, unsigned int *chunksize);
-
-    int ftdi_write_data(struct ftdi_context *ftdi, unsigned char *buf, int size);
-    int ftdi_write_data_set_chunksize(struct ftdi_context *ftdi, unsigned int chunksize);
-    int ftdi_write_data_get_chunksize(struct ftdi_context *ftdi, unsigned int *chunksize);
-
-    int ftdi_readstream(struct ftdi_context *ftdi, FTDIStreamCallback *callback,
-                        void *userdata, int packetsPerTransfer, int numTransfers);
-    struct ftdi_transfer_control *ftdi_write_data_submit(struct ftdi_context *ftdi, unsigned char *buf, int size);
-    void ftdi_async_complete(struct ftdi_context *ftdi, int wait_for_more);
-
-    struct ftdi_transfer_control *ftdi_read_data_submit(struct ftdi_context *ftdi, unsigned char *buf, int size);
-    int ftdi_transfer_data_done(struct ftdi_transfer_control *tc);
-
-    int ftdi_set_bitmode(struct ftdi_context *ftdi, unsigned char bitmask, unsigned char mode);
-    int ftdi_disable_bitbang(struct ftdi_context *ftdi);
-    int ftdi_read_pins(struct ftdi_context *ftdi, unsigned char *pins);
-
-    int ftdi_set_latency_timer(struct ftdi_context *ftdi, unsigned char latency);
-    int ftdi_get_latency_timer(struct ftdi_context *ftdi, unsigned char *latency);
-
-    int ftdi_poll_modem_status(struct ftdi_context *ftdi, unsigned short *status);
-
-    /* flow control */
-    int ftdi_setflowctrl(struct ftdi_context *ftdi, int flowctrl);
-    int ftdi_setdtr_rts(struct ftdi_context *ftdi, int dtr, int rts);
-    int ftdi_setdtr(struct ftdi_context *ftdi, int state);
-    int ftdi_setrts(struct ftdi_context *ftdi, int state);
-
-    int ftdi_set_event_char(struct ftdi_context *ftdi, unsigned char eventch, unsigned char enable);
-    int ftdi_set_error_char(struct ftdi_context *ftdi, unsigned char errorch, unsigned char enable);
-
-    /* init eeprom for the given FTDI type */
-    int ftdi_eeprom_initdefaults(struct ftdi_context *ftdi, 
-                                  char * manufacturer, char *product, 
-                                  char * serial);
-    int ftdi_eeprom_build(struct ftdi_context *ftdi);
-    int ftdi_eeprom_decode(struct ftdi_context *ftdi, int verbose);
-
-    int ftdi_get_eeprom_value(struct ftdi_context *ftdi, enum ftdi_eeprom_value value_name, int* value);
-    int ftdi_set_eeprom_value(struct ftdi_context *ftdi, enum ftdi_eeprom_value value_name, int  value);
-
-    int ftdi_get_eeprom_buf(struct ftdi_context *ftdi, unsigned char * buf, int size);
-    int ftdi_set_eeprom_buf(struct ftdi_context *ftdi, const unsigned char * buf, int size);
-
-    int ftdi_read_eeprom(struct ftdi_context *ftdi);
-    int ftdi_read_chipid(struct ftdi_context *ftdi, unsigned int *chipid);
-    int ftdi_write_eeprom(struct ftdi_context *ftdi);
-    int ftdi_erase_eeprom(struct ftdi_context *ftdi);
-
-    int ftdi_read_eeprom_location (struct ftdi_context *ftdi, int eeprom_addr, unsigned short *eeprom_val);
-    int ftdi_write_eeprom_location(struct ftdi_context *ftdi, int eeprom_addr, unsigned short eeprom_val);
-
-    char *ftdi_get_error_string(struct ftdi_context *ftdi);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* __libftdi_h__ */
