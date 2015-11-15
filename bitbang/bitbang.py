@@ -7,10 +7,16 @@ class BitBang(object):
 	def set(self):
 		raise NotImplementedError
 
+	def setto(self, value_name):
+		raise NotImplementedError
+
 	def get(self):
 		raise NotImplementedError
 		
 	def clear(self):
+		raise NotImplementedError
+
+	def toggle(self):
 		raise NotImplementedError
 	
 	def shift_in(self):
@@ -49,6 +55,13 @@ class ByteAccessInC(BitBang):
 		return """\
 %(name_port_def)s |= %(name_mask_def)s; /* Set %(name)s */""" % self.__dict__
 
+	def setto(self, value_name):
+		d = {}
+		d.update(self.__dict__)
+		d['value_name'] = value_name
+		return """\
+%(name_port_def)s |= (%(name_mask_def)s & %(value_name)s); /* Set %(name)s */""" % d
+
 	def get(self):
 		return """\
 (%(name_port_def)s & %(name_mask_def)s) /* Get %(name)s */""" % self.__dict__
@@ -56,6 +69,10 @@ class ByteAccessInC(BitBang):
 	def clear(self):
 		return """\
 %(name_port_def)s &= %(name_nask_def)s; /* Clear %(name)s */""" % self.__dict__
+
+	def toggle(self):
+		return """\
+%(name_port_def)s ^= %(name_mask_def)s; /* Toggle %(name)s */""" % self.__dict__
 
 
 class BitAccessInC(BitBang):
@@ -83,6 +100,13 @@ class BitAccessInC(BitBang):
 		return """\
 %(name_portbit_def)s = 1; /* Set %(name)s */""" % self.__dict__
 
+	def setto(self, value_name):
+		d = {}
+		d.update(self.__dict__)
+		d['value_name'] = value_name
+		return """\
+%(name_portbit_def)s = %(value_name)s; /* Set %(name)s */""" % d
+
 	def get(self):
 		return """\
 %(name_portbit_def)s /* Get %(name)s */""" % self.__dict__
@@ -90,6 +114,10 @@ class BitAccessInC(BitBang):
 	def clear(self):
 		return """\
 %(name_portbit_def)s = 0; /* Clear %(name)s */""" % self.__dict__
+
+	def toggle(self):
+		return """\
+%(name_portbit_def)s ^= 1; /* Toggle %(name)s */""" % self.__dict__
 
 
 def GenerateFunctions(bitbang):
@@ -103,12 +131,20 @@ inline void %(name)s_set() {
 	%(set)s;
 }
 
+inline void %(name)s_setto(bool value) {
+	%(setto)s;
+}
+
 inline bool %(name)s_get() {
 	return %(get)s;
 }
 
 inline void %(name)s_clear() {
 	%(clear)s;
+}
+
+inline void %(name)s_toggle() {
+	%(toggle)s;
 }
 // -----------------------------------------------------------------------
 
@@ -117,8 +153,10 @@ inline void %(name)s_clear() {
 	'name': bitbang.name,
 	'defines': bitbang.defines(),
 	'set': bitbang.set(),
+	'setto': bitbang.setto("value"),
 	'get': bitbang.get(),
 	'clear': bitbang.clear(),
+	'toggle': bitbang.toggle(),
 	}
 
 
@@ -128,3 +166,16 @@ porta_bit = BitAccessInC("a1", "A", 0)
 print(GenerateFunctions(porta_byte))
 print(GenerateFunctions(porta_bit))
 
+def ShiftByte(bitbang):
+	return """
+
+
+inline BYTE %(name)s_shift(BYTE input) {
+	BYTE output = 0;
+
+	output = %(name)s_get();
+	
+}
+
+
+"""
