@@ -1,4 +1,7 @@
 
+from enum import Enum
+
+import cycles
 
 class BitBang(object):
 	def __init__(self, name):
@@ -150,6 +153,47 @@ __asm__ ("mov %(name_portbit_def)s,c"); /* carry->%(name)s */""" % self.__dict__
 %(name_portbit_def)s ^= 1; /* Toggle %(name)s */""" % self.__dict__
 
 
+class BitAccessInASM(BitBang):
+	def __init__(self, name, port, bit):
+		"""
+		ByteAccessInC("clock", "A", 0)
+		"""
+		BitBang.__init__(self, name)
+
+		self.bitname = "P%s%s" % (port, bit)
+
+		self.port = port
+		self.bit = bit
+
+		self.mask = (1 << self.bit)
+
+		self.name_portbit_def = name.upper() + "_BIT"
+
+	def defines(self):
+		return """\
+""" % self.__dict__
+
+	def set(self):
+		return """\
+__asm__ ("setb	_%(bitname)s");		/* Set %(name)s */""" % self.__dict__
+
+	def bit_to_carry(self):
+		return """\
+__asm__ ("mov	c,_%(bitname)s");	/* %(name)s->carry */""" % self.__dict__
+
+	def carry_to_bit(self):
+		return """\
+__asm__ ("mov	_%(bitname)s,c");	/* carry->%(name)s */""" % self.__dict__
+
+	def clear(self):
+		return """\
+__asm__ ("clr	_%(bitname)s");		/* Clear %(name)s */""" % self.__dict__
+
+	def toggle(self):
+		return """\
+__asm__ ("cpl	_%(bitname)s");		/* Toggle %(name)s */""" % self.__dict__
+
+
 def GenerateFunctions(bitbang):
 	return """
 // Generated functions for %(name)s from %(class)s
@@ -190,216 +234,109 @@ inline void %(name)s_toggle() {
 	}
 
 
+class ShiftOp(object):
+	class FirstBit(Enum):
+		"""
+		MSB == Most Significant bit first
+		LSB == Least Significant bit first
+		"""
+		MSB = 'rlc'
+		LSB = 'rrc'
 
-print("""
+	class ClockMode(Enum):
+		none = 0
+		positive = 1
+		negative = 2
 
-#include "fx2regs.h"
+	def __init__(self, clk_pin, din_pin, dout_pin):
+		self.clk = clk_pin
+		self.din = din_pin
+		self.dout = dout_pin
 
-#define ROTATE_LEFT(i, n) \
-        i = ((i >> (8-n)) | (i << n))
+	def generate(self):
+		raise NotImplementedError()
 
-#define ROTATE_RIGHT(i, n) \
-        i = ((i >> n) | (i << (8-n)))
+def asm_comment(s):
+	return '__asm__ ("	; %s");' % s.replace('\\', '\\\\')
 
+class ShiftByte(ShiftOp):
 
-""")
+	def generate(self, direction, read_on, write_on, pad=True):
+		assert isinstance(direction, ShiftOp.FirstBit)
+		assert isinstance(read_on, ShiftOp.ClockMode)
+		assert isinstance(write_on, ShiftOp.ClockMode)
 
-porta_byte = ByteAccessInC("a1", "A", 0)
-porta_bit = BitAccessInC("a2", "A", 0)
+		read_ops = self.din.bit_to_carry().splitlines()
+		write_ops = self.dout.carry_to_bit().splitlines()
 
-print(GenerateFunctions(porta_byte))
-print(GenerateFunctions(porta_bit))
-print("""
+		# Collect instructions on negative edge
+		neg_edge = []
+		neg_edge.append(self.clk.clear())
+		if write_on == ShiftOp.ClockMode.negative:
+			neg_edge += write_ops
+		if read_on == ShiftOp.ClockMode.negative:
+			neg_edge += read_ops
 
-int main() {
-	BYTE b1 = 0;
-	BYTE b2 = 0;
+		# Collect instructions on positive edge
+		pos_edge = []
+		pos_edge.append(self.clk.set())
+		if write_on == ShiftOp.ClockMode.positive:
+			pos_edge += write_ops
+		if read_on == ShiftOp.ClockMode.positive:
+			pos_edge += read_ops
 
-	a1_set();
-	a1_clear();
-	a1_toggle();
+		# Figure out how the rotate will work
+		rotate_tmpl = '__asm__ ("%s	a"); 		/* %%s */' % direction.value
+		rotate_op = ""
+		if write_on != ShiftOp.ClockMode.none and read_on != ShiftOp.ClockMode.none:
+			rotate_op = rotate_tmpl % "data->carry->data"
+		elif write_on != ShiftOp.ClockMode.none:
+			rotate_op = rotate_tmpl % "data->carry"
+		elif read_on != ShiftOp.ClockMode.none:
+			rotate_op = rotate_tmpl % "carry->data"
 
-	a2_set();
-	a2_clear();
-	a2_toggle();
+		# Find were we want to put the rotate operation
+		if rotate_op:
+			if len(neg_edge) > len(pos_edge):
+				pos_edge.append(rotate_op)
+			elif len(neg_edge) < len(pos_edge):
+				neg_edge.append(rotate_op)
+			else:
+				neg_edge.append(rotate_op)
 
-	b1 |= a1_get();
-	ROTATE_LEFT(b1, 1);
-	b1 |= a1_get();
-	ROTATE_LEFT(b1, 1);
+		# Pad the edges out to be symmetrical in cycle length
+		neg_edge_instructions = cycles.parse("\n".join(neg_edge))
+		neg_edge_len = sum(i[0].cycles for i in neg_edge_instructions if i)
 
-	b2 |= a2_get();
-	ROTATE_LEFT(b2, 1);
-	b2 |= a2_get();
-	ROTATE_LEFT(b2, 1);
+		pos_edge_instructions = cycles.parse("\n".join(pos_edge))
+		pos_edge_len = sum(i[0].cycles for i in pos_edge_instructions if i)
 
-	return b1 + b2;
-}
+		longest = max(neg_edge_len, pos_edge_len)
 
-""")
+		if pad:
+			for i in range(0, longest - pos_edge_len):
+				pos_edge.append('__asm__ ("nop");')
+			for i in range(0, longest - neg_edge_len):
+				neg_edge.append('__asm__ ("nop");')
 
+			neg_edge_instructions = cycles.parse("\n".join(neg_edge))
+			pos_edge_instructions = cycles.parse("\n".join(pos_edge))
 
-from enum import Enum
+		cmds = []
+		if write_on == ShiftOp.ClockMode.negative:
+			cmds.append(asm_comment("Before"))
+			cmds.append(rotate_tmpl % "data->carry")
 
-class ClockMode(Enum):
-	none = 0
-	positive = 1
-	negative = 2
+		for i in range(0, 8):
+			cmds.append(asm_comment("Bit %i" % i))
+			cmds.append("/* \_ (%s cycles) */" % neg_edge_len)
+			cmds += neg_edge
+			cmds.append("/* _/ (%s cycles) */" % pos_edge_len)
+			cmds += pos_edge
 
-def ShiftByte(clock, data_out, data_in, read_on, write_on):
-	"""
-	ShiftByte(ClockMode.positive, ClockMode.negative)
-	"""
+		if read_on == ShiftOp.ClockMode.positive:
+			cmds.append(asm_comment("After)"))
+			cmds.append(rotate_tmpl % "carry->data")
 
-	cmds = []
+		return cmds
 
-	if write_on == ClockMode.negative:
-		cmds.append("rotate carry /* data->carry %i */" % 0)
-
-	for i in range(0, 8):
-		cmds.append("/* Bit %i */" % i)
-
-		# Negative edge
-		cmds.append("\_")
-
-		if write_on == ClockMode.negative:
-			cmds.append("write")
-		elif write_on == ClockMode.positive:
-			cmds.append("rotate carry /* data->carry %i */" % i)
-
-		if read_on == ClockMode.negative:
-			cmds.append("read")
-		elif read_on == ClockMode.positive:
-			cmds.append("rotate carry /* carry->data %i */" % i)
-
-		# Positive edge
-		cmds.append("_/")
-
-		if write_on == ClockMode.positive:
-			cmds.append("write")
-		elif write_on == ClockMode.negative:
-			cmds.append("rotate carry /* data->data %i */" % i)
-
-		if read_on == ClockMode.positive:
-			cmds.append("read")
-		elif read_on == ClockMode.negative:
-			cmds.append("rotate carry /* carry->data %i */" % i)
-
-
-	cmds.append("/* After */")
-	if read_on == ClockMode.positive:
-		cmds.append("rotate carry /* carry->data %i */" % i)
-
-	print(cmds)
-
-
-#	rotate carry /* carry->data */
-#	rotate carry /* data->carry */
-# --
-#	rotate carry /* carry->data->carry */
-
-#(a)
-#	rotate carry /* carry->data */
-#	(....)
-#	rotate carry /* data->carry */
-# --
-#	rotate carry /* carry->data->carry */
-#	\1
-
-#(b)
-#	rotate carry /* carry->data */
-#	(....)
-#	rotate carry /* data->carry */
-# --
-#	\1
-#	rotate carry /* carry->data->carry */
-
-	i = 0
-	while i < len(cmds)-1:
-		if cmds[i].startswith("rotate carry") and cmds[i+1].startswith("rotate carry"):
-			cmds.pop(i)
-			cmds.pop(i)
-			cmds.insert(i, "rotate carry /* carry->data->carry */")
-		i += 1
-	
-	print(cmds)
-
-	output = []
-	for cmd in cmds:
-		if cmd == "\_":
-			output.append(clock.clear())
-		elif cmd == "_/":
-			output.append(clock.set())
-		elif cmd == "read":
-			output.append(data_in.bit_to_carry())
-		elif cmd == "write":
-			output.append(data_out.carry_to_bit())
-		elif cmd == "nops":
-			output.append("DELAY;")
-		elif cmd.startswith("rotate carry"):
-			output.append("""\
-__asm__ ("rlc"); %s""" % cmd[13:])
-		elif cmd.startswith("/*"):
-			output.append(cmd)
-
-	defs = ''
-	args = ''
-	if read_on != ClockMode.none:
-		if write_on != ClockMode.none:
-			args = 'BYTE data'
-		else:
-			defs = 'BYTE data = 0;'
-
-		rettype = 'BYTE'
-		ret = 'return data;'
-	else:
-		rettype = 'void'
-		ret = 'return;'
-
-	print("""\
-/* ---------------------------- */
-%(rettype)s shift_byte(%(args)s) {
-	%(defs)s""" % locals())
-	print("	"+"\n	".join(output))
-	print("""\
-	%(ret)s
-}
-/* ---------------------------- */""" % locals())
-
-clock = BitAccessInC("clk", "E", 5)
-data_out = BitAccessInC("dout", "E", 2)
-data_in = BitAccessInC("din", "E", 3)
-
-print("// read:none, write:none")
-ShiftByte(clock, data_out, data_in, read_on=ClockMode.none, write_on=ClockMode.none)
-print("// ---------\n")
-print("// read: +ve, write:none")
-ShiftByte(clock, data_out, data_in, read_on=ClockMode.positive, write_on=ClockMode.none)
-print("// ---------\n")
-print("// read: -ve, write:none")
-ShiftByte(clock, data_out, data_in, read_on=ClockMode.negative, write_on=ClockMode.none)
-print("// ---------\n")
-print("// read: +ve, write: +ve")
-ShiftByte(clock, data_out, data_in, read_on=ClockMode.positive, write_on=ClockMode.positive)
-print("// ---------\n")
-print("// read: +ve, write: -ve")
-ShiftByte(clock, data_out, data_in, read_on=ClockMode.positive, write_on=ClockMode.negative)
-print("// ---------\n")
-print("// read: -ve, write: +ve")
-ShiftByte(clock, data_out, data_in, read_on=ClockMode.negative, write_on=ClockMode.positive)
-print("// ---------\n")
-
-
-def ShiftByte(bitbang):
-	return """
-inline BYTE %(name)s_shift(BYTE input) {
-	_Bool carry = 0;
-	BYTE output = 0;
-
-	carry = input & 0x1;
-	ROTATE_RIGHT(input, 1);
-	%(name)s_setto(carry);
-	output &= %(name)s_get();
-	ROTATE_LEFT(output, 1);
-}
-"""

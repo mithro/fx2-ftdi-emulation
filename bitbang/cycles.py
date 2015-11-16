@@ -36,7 +36,8 @@ class ArgType(Enum):
 		raise ValueError('%s not found in %s' % (s, cls))
 
 	def regex(self):
-		not_reg = '(?:[^\s,][^\s,][^\s,]+)|(?:[^\s,Rr][^\s,])|(?:[Rr][^0-7])|(?:[^\s,AaCcBb])'
+		a = "\s,\"'"
+		not_reg = '(?:[^{0}][^{0}][^{0}]+)|(?:[^{0}Rr][^{0}])|(?:[Rr][^0-7])|(?:[^{0}AaCcBb])'.format(a)
 		if self == ArgType.accumulator:
 			return '[Aa]'
 		elif self == ArgType.b:
@@ -249,4 +250,5 @@ if __name__ == "__main__":
 	__asm__ ('nop');
         __asm__ ("mov c,DIN_BIT"); /* din->carry */
         __asm__ ("rlc a"); /* data->carry->data */
+	__asm__ ("mov DOUT_BIT,c"); /* carry->dout */
 """)
