@@ -1,27 +1,28 @@
 
 """
-Bytes || Bits
+Generate the shift functions needed by the MPSSE module.
 
+Bytes || Bits
 (MSB || LSB) First
 Out on (+ve || -ve)
  In on (+ve || -ve)
 
 """
 
-import bitbang
+import software as sw
 
 # Create the shift byte commands
-clock = bitbang.BitAccessInASM("clk", "A", 5)
-data_in = bitbang.BitAccessInASM("din", "A", 3)
-data_out = bitbang.BitAccessInASM("dout", "A", 2)
+clock = sw.BitAccessInASM("clk", "A", 5)
+data_in = sw.BitAccessInASM("din", "A", 3)
+data_out = sw.BitAccessInASM("dout", "A", 2)
 
-byte_shifter = bitbang.ShiftByte(clock, data_in, data_out)
+byte_shifter = sw.ShiftByte(clock, data_in, data_out)
 
 combos = []
-for d in bitbang.ShiftOp.FirstBit:
-	for read_on in bitbang.ShiftOp.ClockMode:
-		for write_on in bitbang.ShiftOp.ClockMode:
-			if read_on == bitbang.ShiftOp.ClockMode.none and write_on == bitbang.ShiftOp.ClockMode.none:
+for d in sw.ShiftOp.FirstBit:
+	for read_on in sw.ShiftOp.ClockMode:
+		for write_on in sw.ShiftOp.ClockMode:
+			if read_on == sw.ShiftOp.ClockMode.none and write_on == sw.ShiftOp.ClockMode.none:
 				continue
 			combos.append((d, read_on, write_on))
 
@@ -41,25 +42,25 @@ print("""
 
 for d, read_on, write_on in combos:
 	name = ["ShiftByte"]
-	if d == bitbang.ShiftOp.FirstBit.MSB:
+	if d == sw.ShiftOp.FirstBit.MSB:
 		name.append("MSBFirst")
-	elif d == bitbang.ShiftOp.FirstBit.LSB:
+	elif d == sw.ShiftOp.FirstBit.LSB:
 		name.append("LSBFirst")
 
-	if read_on == bitbang.ShiftOp.ClockMode.positive:
+	if read_on == sw.ShiftOp.ClockMode.positive:
 		name.append("inOnPos")
-	elif read_on == bitbang.ShiftOp.ClockMode.negative:
+	elif read_on == sw.ShiftOp.ClockMode.negative:
 		name.append("inOnNeg")
-	if write_on == bitbang.ShiftOp.ClockMode.positive:
+	if write_on == sw.ShiftOp.ClockMode.positive:
 		name.append("outOnPos")
-	elif write_on == bitbang.ShiftOp.ClockMode.negative:
+	elif write_on == sw.ShiftOp.ClockMode.negative:
 		name.append("outOnNeg")
 	name = "_".join(name)
 
 	defs = ''
 	args = ''
-	if read_on != bitbang.ShiftOp.ClockMode.none:
-		if write_on != bitbang.ShiftOp.ClockMode.none:
+	if read_on != sw.ShiftOp.ClockMode.none:
+		if write_on != sw.ShiftOp.ClockMode.none:
 			args = 'BYTE data'
 			defs = """
 	(data);
