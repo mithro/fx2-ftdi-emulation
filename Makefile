@@ -63,7 +63,7 @@ descriptors.c: descriptors_strings.h descriptors_strings.inc
 
 # Check the descriptors with GCC rather then sdcc
 check_descriptors: descriptors.c
-	gcc -Wall -Werror $(INCS) descriptors.c
+	gcc -std=c99 -Wall -Werror $(INCS) descriptors.c
 	@rm -f a.out
 
 # Check that the interrupt vector table ended up were we asked it too.
