@@ -16,4 +16,6 @@
 docs/html
 build
 *_str.c
-mpsse.c
+bitbang/mpsse.c
+descriptors_strings.h
+descriptors_strings.inc
