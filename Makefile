@@ -4,7 +4,7 @@ FX2LIBDIR := ./fx2lib
 LIBS := $(FX2LIBDIR)/lib/fx2.lib
 INCS :=  -I$(FX2LIBDIR)/include
 
-CC_SRCS := descriptors.c bitbang/mpsse.c bitbang/i2c.c
+CC_SRCS := descriptors.c #bitbang/mpsse.c bitbang/i2c.c
 CC_OBJS := $(CC_SRCS:%.c=%.rel)
 
 CC := sdcc
