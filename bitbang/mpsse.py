@@ -12,9 +12,9 @@ Out on (+ve || -ve)
 import software as sw
 
 # Create the shift byte commands
-clock = sw.BitAccessInASM("clk", "A", 5)
-data_in = sw.BitAccessInASM("din", "A", 3)
-data_out = sw.BitAccessInASM("dout", "A", 2)
+clock = sw.BitAccessInASM("clk", sw.BitDirection.output, "A", 5)
+data_in = sw.BitAccessInASM("din", sw.BitDirection.input, "A", 3)
+data_out = sw.BitAccessInASM("dout", sw.BitDirection.output, "A", 2)
 
 byte_shifter = sw.ShiftByte(clock, data_in, data_out)
 

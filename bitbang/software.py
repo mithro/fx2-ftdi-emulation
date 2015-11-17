@@ -1,37 +1,95 @@
+"""
+Tools for generating efficient software based bit banging functions.
+"""
 
 from enum import Enum
 
 import cycles
 
+class BitDirection(Enum):
+	bidirectional = 'bidir'
+	output = 'out'
+	input = 'in'
+	high_impedance = input
+
+
 class BitBang(object):
-	def __init__(self, name):
+	"""
+	Base interface for a bit banging bit.
+	"""
+
+	def get_undefined(self, fname):
+		def undefined(self):
+			raise IOError('Operation %s not valid on %s (%s pin)' % (fname, self.name, self.direction))
+		return undefined.__get__(self, self.__class__)
+
+	def __init__(self, name, direction):
 		self.name = name
 
-	def set(self):
-		raise NotImplementedError
+		self.direction = direction
+		if self.direction is BitDirection.output:
+			self.bit_to_carry = self.get_undefined("bit_to_carry")
+			self.get = self.get_undefined("get")
+		elif self.direction is BitDirection.input:
+			self.carry_to_bit = self.get_undefined("carry_to_bit")
+			self.get = self.get_undefined("set")
+		elif self.direction is BitDirection.bidirectional:
+			pass
+		else:
+			raise ValueError("Unknown direction %r" % direction)
 
-	def setto(self, value_name):
-		raise NotImplementedError
-
-	def bit_to_carry(self):
-		raise NotImplementedError
-
-	def carry_to_bit(self):
-		raise NotImplementedError
-
+	# Simple bit operations
 	def get(self):
+		"""Get the bit value."""
 		raise NotImplementedError
-		
-	def clear(self):
+
+	def set(self):
+		"""Set the bit value to 1."""
 		raise NotImplementedError
 
 	def toggle(self):
+		"""Invert the current value of the bit. IE 1 -> 0 and 0 -> 1."""
 		raise NotImplementedError
-	
-	def shift_in(self):
+
+	def clear(self):
+		"""Set the bit value to 0."""
 		raise NotImplementedError
-		
-	def shift_out(self):
+
+	# Direction set up
+	def setup(self, direction=None):
+		if self.direction == BitDirection.bidirectional:
+			if not direction:
+				return ""
+		else:
+			if direction:
+				assert direction == self.direction
+				return ""
+			direction = self.direction
+
+		if direction == BitDirection.input:
+			return self._setup_input()
+		elif direction == BitDirection.output:
+			return self._setup_output()
+		else:
+			raise ValueError("Invalid direction %r for setup." % direction)
+
+	def _setup_input(self):
+		raise NotImplementedError
+
+	def _setup_output(self):
+		raise NotImplementedError
+
+	# To/From the carry bit
+	def bit_to_carry(self):
+		"""Move the bit contents into the carry bit."""
+		raise NotImplementedError
+
+	def carry_to_bit(self):
+		"""Move the carry bit into the contents."""
+		raise NotImplementedError
+
+	# FIXME: Is this needed?
+	def setto(self, value_name):
 		raise NotImplementedError
 
 def indent(s):
@@ -39,11 +97,12 @@ def indent(s):
 
 
 class ByteAccessInC(BitBang):
-	def __init__(self, name, port, bit):
+	"""Access bits via byte operations. Implemented in C."""
+	def __init__(self, name, direction, port, bit):
 		"""
 		ByteAccessInC("clock", "A", 0)
 		"""
-		BitBang.__init__(self, name)
+		BitBang.__init__(self, name, direction)
 
 		self.portname = "IO%s" % port
 		self.bit = bit
@@ -65,7 +124,7 @@ class ByteAccessInC(BitBang):
 	def set(self):
 		return """\
 %(name_port_def)s |= %(name_mask_def)s; /* Set %(name)s */""" % self.__dict__
-	
+
 	def get(self):
 		return """\
 (%(name_port_def)s & %(name_mask_def)s) /* Get %(name)s */""" % self.__dict__
@@ -101,11 +160,13 @@ __asm__ ("");
 
 
 class BitAccessInC(BitBang):
-	def __init__(self, name, port, bit):
+	"""Access bits (in bit addressable space) via bit operations. Implemented in C."""
+
+	def __init__(self, name, direction, port, bit):
 		"""
 		ByteAccessInC("clock", "A", 0)
 		"""
-		BitBang.__init__(self, name)
+		BitBang.__init__(self, name, direction)
 
 		self.bitname = "P%s%s" % (port, bit)
 
@@ -154,11 +215,13 @@ __asm__ ("mov %(name_portbit_def)s,c"); /* carry->%(name)s */""" % self.__dict__
 
 
 class BitAccessInASM(BitBang):
-	def __init__(self, name, port, bit):
+	"""Access bits (in bit addressable space) via bit operations. Implemented in assembly."""
+
+	def __init__(self, name, direction, port, bit):
 		"""
 		ByteAccessInC("clock", "A", 0)
 		"""
-		BitBang.__init__(self, name)
+		BitBang.__init__(self, name, direction)
 
 		self.bitname = "P%s%s" % (port, bit)
 
@@ -249,9 +312,54 @@ class ShiftOp(object):
 		negative = 2
 
 	def __init__(self, clk_pin, din_pin, dout_pin):
-		self.clk = clk_pin
-		self.din = din_pin
-		self.dout = dout_pin
+		self.clk_pin = clk_pin
+		assert self.clk_pin.direction == BitDirection.output, (self.clk_pin.direction, BitDirection.output)
+
+		if din_pin == dout_pin:
+			assert din_pin.direction == BitDirection.bidirectional
+			self.din_pin = dout_pin
+			self.dout_pin = din_pin
+		else:
+			assert din_pin.direction == BitDirection.input
+			self.din_pin = din_pin
+			assert dout_pin.direction == BitDirection.output
+			self.dout_pin = dout_pin
+
+	"""
+	@property
+	def data_direction(self):
+		assert self.data_pin
+		if self.din_pin:
+			return BitDirection.input
+		elif self.dout_pin:
+			return BitDirection.output
+		else:
+			raise ValueError("Data direction currently undefined!")
+
+	def data_direction(self, direction):
+		if not self.data_pin:
+			return ""
+		try:
+			if direction == self.data_direction:
+				# No direction change needed, as already that
+				# direction.
+				return ""
+		except ValueError:
+			pass
+
+		if direction == BitDirection.output:
+			assert self.dout_pin is None
+			self.dout_pin = self.data_pin
+			self.din_pin = None
+			return "FIXME: Switching instructions here."
+		elif direction == BitDirection.input:
+			self.dout_pin = None
+			assert self.din_pin is None
+			self.din_pin = self.data_pin
+			return "FIXME: Switching instructions here."
+		else:
+			raise ValueError("Invalid data direction %r" % direction)
+"""
 
 	def generate(self):
 		raise NotImplementedError()
@@ -279,12 +387,12 @@ class ShiftByte(ShiftOp):
 		assert isinstance(read_on, ShiftOp.ClockMode)
 		assert isinstance(write_on, ShiftOp.ClockMode)
 
-		read_ops = self.din.bit_to_carry().splitlines()
-		write_ops = self.dout.carry_to_bit().splitlines()
+		read_ops = self.din_pin.setup(BitDirection.input).splitlines() + self.din_pin.bit_to_carry().splitlines()
+		write_ops = self.dout_pin.setup(BitDirection.output).splitlines() + self.dout_pin.carry_to_bit().splitlines()
 
 		# Collect instructions on negative edge
 		neg_edge = []
-		neg_edge.append(self.clk.clear())
+		neg_edge.append(self.clk_pin.clear())
 		if write_on == ShiftOp.ClockMode.negative:
 			neg_edge += write_ops
 		if read_on == ShiftOp.ClockMode.negative:
@@ -292,7 +400,7 @@ class ShiftByte(ShiftOp):
 
 		# Collect instructions on positive edge
 		pos_edge = []
-		pos_edge.append(self.clk.set())
+		pos_edge.append(self.clk_pin.set())
 		if write_on == ShiftOp.ClockMode.positive:
 			pos_edge += write_ops
 		if read_on == ShiftOp.ClockMode.positive:
