@@ -24,7 +24,7 @@ struct usb_descriptors_strings {
 		__u8 bLength;
 		__u8 bDescriptorType;
 		__le16 wData[1];
-	} language;""" % len(strings))
+	} language;""" % (len(strings)-1,))
 	for i, string in enumerate(strings):
 		print("""\
 	struct usb_string_%(i)i {
