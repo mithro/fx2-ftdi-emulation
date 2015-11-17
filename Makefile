@@ -53,6 +53,8 @@ descriptors_strings.h: descriptors_string_table.py descriptors.strings
 descriptors_strings.inc: descriptors_string_table.py descriptors.strings
 	@python2 descriptors_string_table.py --cfile < descriptors.strings > descriptors_strings.inc
 
+descriptors.c: descriptors_strings.h descriptors_strings.inc
+
 # Check the descriptors with GCC rather then sdcc
 check_descriptors: descriptors.c
 	gcc -Wall -Werror $(INCS) descriptors.c

@@ -2,7 +2,11 @@
 
 import sys
 
-strings = [x.strip() for x in sys.stdin.readlines()]
+import subprocess
+git_id = subprocess.check_output("git describe --dirty --long", shell=True).strip().decode('utf-8')
+serialno = '0123456789abcdef ' + git_id
+
+strings = [x.strip() for x in sys.stdin.readlines()]+[serialno]
 
 if sys.argv[1] == "--header":
 	print("""\
@@ -13,12 +17,14 @@ if sys.argv[1] == "--header":
 #ifndef DESCRIPTORS_STRING_TABLE_H_
 #define DESCRIPTORS_STRING_TABLE_H_
 
+#define USB_STRING_SERIAL_INDEX USB_STRING_INDEX(%i)
+
 struct usb_descriptors_strings {
 	struct usb_string_lang {
 		__u8 bLength;
 		__u8 bDescriptorType;
 		__le16 wData[1];
-	} language;""")
+	} language;""" % len(strings))
 	for i, string in enumerate(strings):
 		print("""\
 	struct usb_string_%(i)i {

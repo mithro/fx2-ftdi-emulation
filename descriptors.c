@@ -15,7 +15,7 @@ __code __at(DSCR_AREA) struct usb_descriptors code_descriptors = {
 		.bcdDevice		= DID,
 		.iManufacturer		= USB_STRING_INDEX(0),
 		.iProduct		= USB_STRING_INDEX(1),
-		.iSerialNumber		= USB_STRING_INDEX(2),
+		.iSerialNumber		= USB_STRING_SERIAL_INDEX,
 		.bNumConfigurations	= 1
 	},
 	.highspeed = {
