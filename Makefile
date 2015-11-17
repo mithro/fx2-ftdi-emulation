@@ -55,9 +55,9 @@ bitbang/i2c.c: bitbang/*.py
 
 # Generate the descriptor strings
 descriptors_strings.h: descriptors_string_table.py descriptors.strings
-	@python2 descriptors_string_table.py --header < descriptors.strings > descriptors_strings.h
+	python3 descriptors_string_table.py --header < descriptors.strings > descriptors_strings.h
 descriptors_strings.inc: descriptors_string_table.py descriptors.strings
-	@python2 descriptors_string_table.py --cfile < descriptors.strings > descriptors_strings.inc
+	python3 descriptors_string_table.py --cfile < descriptors.strings > descriptors_strings.inc
 
 descriptors.c: descriptors_strings.h descriptors_strings.inc
 
