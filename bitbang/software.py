@@ -672,6 +672,7 @@ class ShiftByte(ShiftOp):
 				neg_edge.append(rotate_op)
 
 		# Pad the edges out to be symmetrical in cycle length
+		# FIXME: This won't work for the C versions...
 		neg_edge_instructions = cycles.parse("\n".join(neg_edge))
 		neg_edge_len = sum(i[0].cycles for i in neg_edge_instructions if i)
 
