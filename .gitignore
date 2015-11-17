@@ -13,6 +13,7 @@
 *.kpf
 *.swp
 *.iic
+*.lk
 docs/html
 build
 *_str.c
