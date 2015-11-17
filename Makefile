@@ -12,7 +12,7 @@ CC := sdcc
 # Compiler options
 CFLAGS += --verbose --std-c99 -mmcs51 -Wa"-p"
 # Where to put things in the memory
-CFLAGS += --code-size 0x3e00 --xram-size 0x0200 -Wl"-b DSCR_AREA=0x2e00" -Wl"-b INT2JT=0x3f00"
+CFLAGS += --code-size 0x3e00 --xram-size 0x0200 -DDSCR_AREA=0x2e00 -Wl"-b INT2JT=0x3f00"
 
 # Use make V=1 for a verbose build.
 ifndef V
