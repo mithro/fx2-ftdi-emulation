@@ -1,3 +1,9 @@
+"""
+Tools for calculating the cycles ASM instructions need.
+
+Reads the information from the cycles.md file.
+"""
+
 import re
 from collections import namedtuple
 from collections import OrderedDict
