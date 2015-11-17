@@ -18,5 +18,6 @@ docs/html
 build
 *_str.c
 bitbang/mpsse.c
+bitbang/i2c.c
 descriptors_strings.h
 descriptors_strings.inc
