@@ -4,13 +4,8 @@ Tools for generating efficient software based bit banging functions.
 
 from enum import Enum
 
+import pins
 import cycles
-
-class BitDirection(Enum):
-	bidirectional = 'bidir'
-	output = 'out'
-	input = 'in'
-	high_impedance = input
 
 
 class BitBang(object):
@@ -20,20 +15,22 @@ class BitBang(object):
 
 	def get_undefined(self, fname):
 		def undefined(self):
-			raise IOError('Operation %s not valid on %s (%s pin)' % (fname, self.name, self.direction))
+			raise IOError('Operation %s not valid on %s (%s pin)' % (fname, self.pin.name, self.direction))
 		return undefined.__get__(self, self.__class__)
 
-	def __init__(self, name, direction):
+	def __init__(self, name, pin, direction):
 		self.name = name
+		assert isinstance(pin, pins.Pin), pin
+		self.pin = pin
 
 		self.direction = direction
-		if self.direction is BitDirection.output:
+		if self.direction is pins.PinDirection.output:
 			self.bit_to_carry = self.get_undefined("bit_to_carry")
 			self.get = self.get_undefined("get")
-		elif self.direction is BitDirection.input:
+		elif self.direction is pins.PinDirection.input:
 			self.carry_to_bit = self.get_undefined("carry_to_bit")
 			self.get = self.get_undefined("set")
-		elif self.direction is BitDirection.bidirectional:
+		elif self.direction is pins.PinDirection.bidirectional:
 			pass
 		else:
 			raise ValueError("Unknown direction %r" % direction)
@@ -57,7 +54,7 @@ class BitBang(object):
 
 	# Direction set up
 	def setup(self, direction=None):
-		if self.direction == BitDirection.bidirectional:
+		if self.direction == pins.PinDirection.bidirectional:
 			if not direction:
 				return ""
 		else:
@@ -66,9 +63,9 @@ class BitBang(object):
 				return ""
 			direction = self.direction
 
-		if direction == BitDirection.input:
+		if direction == pins.PinDirection.input:
 			return self._setup_input()
-		elif direction == BitDirection.output:
+		elif direction == pins.PinDirection.output:
 			return self._setup_output()
 		else:
 			raise ValueError("Invalid direction %r for setup." % direction)
@@ -98,37 +95,71 @@ def indent(s):
 
 class ByteAccessInC(BitBang):
 	"""Access bits via byte operations. Implemented in C."""
-	def __init__(self, name, direction, port, bit):
+	def __init__(self, name, pin, direction):
 		"""
 		ByteAccessInC("clock", "A", 0)
 		"""
-		BitBang.__init__(self, name, direction)
+		BitBang.__init__(self, name, pin, direction)
 
-		self.portname = "IO%s" % port
-		self.bit = bit
-
-		self.mask = (1 << self.bit)
-		self.nask = ~(1 << self.bit) & 0xff
-
-		self.name_port_def = name.upper() + "_PORT"
-		self.name_mask_def = name.upper() + "_MASK"
-		self.name_nask_def = name.upper() + "_NASK"
+		self.def_port = name.upper() + "_PORT"
+		self.def_oe = name.upper() + "_PORT_OE"
+		self.def_mask = name.upper() + "_MASK"
+		self.def_nask = name.upper() + "_NASK"
 
 	def defines(self):
+		d = {
+			'port_name': sef.pin.port_name,
+			'port_oe': self.pin.output_name,
+			'mask': self.pin.mask,
+			'nask': self.pin.nask,
+		}
+		d.update(self.__dict__)
 		return """\
-#define %(name_port_def)s %(portname)s
-#define %(name_mask_def)s %(mask)#04X
-#define %(name_nask_def)s %(nask)#04X
-""" % self.__dict__
+#define %(def_port)s %(port_name)s
+#define %(def_oe)s %(port_oe)s
+#define %(def_mask)s %(mask)#04X
+#define %(def_nask)s %(nask)#04X
+""" % d
 
+	# Simple bit operations
 	def set(self):
 		return """\
-%(name_port_def)s |= %(name_mask_def)s; /* Set %(name)s */""" % self.__dict__
+%(def_port)s |= %(def_mask)s; /* Set %(name)s */""" % self.__dict__
 
 	def get(self):
 		return """\
-(%(name_port_def)s & %(name_mask_def)s) /* Get %(name)s */""" % self.__dict__
+(%(def_port)s & %(def_mask)s) /* Get %(name)s */""" % self.__dict__
 
+	def clear(self):
+		return """\
+%(def_port)s &= %(def_nask)s; /* Clear %(name)s */""" % self.__dict__
+
+	def toggle(self):
+		return """\
+%(def_port)s ^= %(def_mask)s; /* Toggle %(name)s */""" % self.__dict__
+
+	# Direction set up
+	def _setup_input(self):
+		return """\
+%(def_oe)s &= %(def_nask)s; /* Set %(name)s as input */""" % self.__dict__
+
+	def _setup_output(self):
+		return """\
+%(def_oe)s |= %(def_mask)s; /* Set %(name)s as output */""" % self.__dict__
+
+	# To/From the carry bit
+	def carry_to_bit(self):
+		raise NotImplementedError
+		return """\
+__asm__ ("");
+"""
+	def bit_to_carry(self):
+		raise NotImplementedError
+		return """\
+__asm__ ("");
+"""
+
+	# Other
 	def setto(self, value_name):
 		return """\
 if (%(value_name)s) {
@@ -141,120 +172,135 @@ if (%(value_name)s) {
 	'clear': self.clear(),
 	}
 
-	def carry_to_bit(self):
-		return """\
-__asm__ ("");
-"""
-	def bit_to_carry(self):
-		return """\
-__asm__ ("");
-"""
-
-	def clear(self):
-		return """\
-%(name_port_def)s &= %(name_nask_def)s; /* Clear %(name)s */""" % self.__dict__
-
-	def toggle(self):
-		return """\
-%(name_port_def)s ^= %(name_mask_def)s; /* Toggle %(name)s */""" % self.__dict__
 
 
 class BitAccessInC(BitBang):
 	"""Access bits (in bit addressable space) via bit operations. Implemented in C."""
 
-	def __init__(self, name, direction, port, bit):
+	def __init__(self, name, direction, pin):
 		"""
 		ByteAccessInC("clock", "A", 0)
 		"""
-		BitBang.__init__(self, name, direction)
+		assert self.pin.bit_accessible, "%r not bit accessible!" % pin
+		BitBang.__init__(self, name, direction, pin)
 
-		self.bitname = "P%s%s" % (port, bit)
-
-		self.port = port
-		self.bit = bit
-
-		self.mask = (1 << self.bit)
-
-		self.name_portbit_def = name.upper() + "_BIT"
+		self.def_bit = name.upper() + "_BIT"
+		self.def_oe = name.upper() + "_BIT_OE"
+		self.def_mask = name.upper() + "_MASK"
+		self.def_nask = name.upper() + "_NASK"
 
 	def defines(self):
+		d = {
+			'bit_name': sef.pin.bit_name,
+			'bit_oe': self.pin.output_name,
+			'mask': self.pin.mask,
+			'nask': self.pin.nask,
+		}
+		d.update(self.__dict__)
 		return """\
-#define %(name_portbit_def)s %(bitname)s
+#define %(def_bit)s %(bit_name)s
 """ % self.__dict__
 
+	# Simple bit operations
 	def set(self):
 		return """\
-%(name_portbit_def)s = 1; /* Set %(name)s */""" % self.__dict__
+%(def_bit)s = 1; /* Set %(name)s */""" % self.__dict__
 
+	def get(self):
+		return """\
+%(def_bit)s /* Get %(name)s */""" % self.__dict__
+
+	def clear(self):
+		return """\
+%(def_bit)s = 0; /* Clear %(name)s */""" % self.__dict__
+
+	def toggle(self):
+		return """\
+%(def_bit)s ^= 1; /* Toggle %(name)s */""" % self.__dict__
+
+	# Direction set up
+	def _setup_input(self):
+		raise """\
+%(def_oe)s &= %(def_nask)s; /* Set %(name)s as input */""" % self.__dict__
+
+	def _setup_output(self):
+		raise """\
+%(def_oe)s |= %(def_mask)s; /* Set %(name)s as output */""" % self.__dict__
+
+	# To/From the carry bit
+	def bit_to_carry(self):
+		return """\
+__asm__ ("mov c,%(def_bit)s"); /* %(name)s->carry */""" % self.__dict__
+
+	def carry_to_bit(self):
+		return """\
+__asm__ ("mov %(def_bit)s,c"); /* carry->%(name)s */""" % self.__dict__
+
+	# Other
 	def setto(self, value_name):
 		d = {}
 		d.update(self.__dict__)
 		d['value_name'] = value_name
 		return """\
-%(name_portbit_def)s = %(value_name)s; /* Set %(name)s */""" % d
-
-	def get(self):
-		return """\
-%(name_portbit_def)s /* Get %(name)s */""" % self.__dict__
-
-	def bit_to_carry(self):
-		return """\
-__asm__ ("mov c,%(name_portbit_def)s"); /* %(name)s->carry */""" % self.__dict__
-
-	def carry_to_bit(self):
-		return """\
-__asm__ ("mov %(name_portbit_def)s,c"); /* carry->%(name)s */""" % self.__dict__
-
-	def clear(self):
-		return """\
-%(name_portbit_def)s = 0; /* Clear %(name)s */""" % self.__dict__
-
-	def toggle(self):
-		return """\
-%(name_portbit_def)s ^= 1; /* Toggle %(name)s */""" % self.__dict__
+%(def_bit)s = %(value_name)s; /* Set %(name)s */""" % d
 
 
 class BitAccessInASM(BitBang):
 	"""Access bits (in bit addressable space) via bit operations. Implemented in assembly."""
 
-	def __init__(self, name, direction, port, bit):
+	def __init__(self, name, pin, direction):
 		"""
 		ByteAccessInC("clock", "A", 0)
 		"""
-		BitBang.__init__(self, name, direction)
+		assert pin.bit_accessible, "%r not bit accessible!" % self.pin
+		BitBang.__init__(self, name, pin, direction)
 
-		self.bitname = "P%s%s" % (port, bit)
-
-		self.port = port
-		self.bit = bit
-
-		self.mask = (1 << self.bit)
-
-		self.name_portbit_def = name.upper() + "_BIT"
+		self.bit_name = self.pin.bit_name
+		self.oe_name = self.pin.output_name
+		self.mask = self.pin.mask
+		self.nask = self.pin.nask
 
 	def defines(self):
 		return """\
 """ % self.__dict__
 
+	# Simple bit operations
 	def set(self):
 		return """\
-__asm__ ("setb	_%(bitname)s");		/* Set %(name)s */""" % self.__dict__
+__asm__ ("setb	_%(bit_name)s");		/* Set %(name)s */""" % self.__dict__
 
-	def bit_to_carry(self):
-		return """\
-__asm__ ("mov	c,_%(bitname)s");	/* %(name)s->carry */""" % self.__dict__
-
-	def carry_to_bit(self):
-		return """\
-__asm__ ("mov	_%(bitname)s,c");	/* carry->%(name)s */""" % self.__dict__
+	def get(self):
+		raise NotImplementedError
 
 	def clear(self):
 		return """\
-__asm__ ("clr	_%(bitname)s");		/* Clear %(name)s */""" % self.__dict__
+__asm__ ("clr	_%(bit_name)s");		/* Clear %(name)s */""" % self.__dict__
 
 	def toggle(self):
 		return """\
-__asm__ ("cpl	_%(bitname)s");		/* Toggle %(name)s */""" % self.__dict__
+__asm__ ("cpl	_%(bit_name)s");		/* Toggle %(name)s */""" % self.__dict__
+
+	# Direction set up
+	def _setup_input(self):
+		return """\
+__asm__ ("anl	_%(oe_name)s,#%(nask)#04x;");	/* Set %(name)s as input */""" % self.__dict__
+
+	def _setup_output(self):
+		return """\
+__asm__ ("orl	_%(oe_name)s,#%(mask)#04x;");	/* Set %(name)s as output */""" % self.__dict__
+
+	# To/From the carry bit
+	def bit_to_carry(self):
+		return """\
+__asm__ ("mov	c,_%(bit_name)s");	/* %(name)s->carry */""" % self.__dict__
+
+	def carry_to_bit(self):
+		return """\
+__asm__ ("mov	_%(bit_name)s,c");	/* carry->%(name)s */""" % self.__dict__
+
+	# Other
+	def setto(self, value_name):
+		raise NotImplementedError
 
 
 def GenerateFunctions(bitbang):
@@ -313,16 +359,16 @@ class ShiftOp(object):
 
 	def __init__(self, clk_pin, din_pin, dout_pin):
 		self.clk_pin = clk_pin
-		assert self.clk_pin.direction == BitDirection.output, (self.clk_pin.direction, BitDirection.output)
+		assert self.clk_pin.direction == pins.PinDirection.output, (self.clk_pin.direction, pins.PinDirection.output)
 
 		if din_pin == dout_pin:
-			assert din_pin.direction == BitDirection.bidirectional
+			assert din_pin.direction == pins.PinDirection.bidirectional
 			self.din_pin = dout_pin
 			self.dout_pin = din_pin
 		else:
-			assert din_pin.direction == BitDirection.input
+			assert din_pin.direction == pins.PinDirection.input
 			self.din_pin = din_pin
-			assert dout_pin.direction == BitDirection.output
+			assert dout_pin.direction == pins.PinDirection.output
 			self.dout_pin = dout_pin
 
 	"""
@@ -330,9 +376,9 @@ class ShiftOp(object):
 	def data_direction(self):
 		assert self.data_pin
 		if self.din_pin:
-			return BitDirection.input
+			return pins.PinDirection.input
 		elif self.dout_pin:
-			return BitDirection.output
+			return pins.PinDirection.output
 		else:
 			raise ValueError("Data direction currently undefined!")
 
@@ -347,12 +393,12 @@ class ShiftOp(object):
 		except ValueError:
 			pass
 
-		if direction == BitDirection.output:
+		if direction == pins.PinDirection.output:
 			assert self.dout_pin is None
 			self.dout_pin = self.data_pin
 			self.din_pin = None
 			return "FIXME: Switching instructions here."
-		elif direction == BitDirection.input:
+		elif direction == pins.PinDirection.input:
 			self.dout_pin = None
 			assert self.din_pin is None
 			self.din_pin = self.data_pin
@@ -387,8 +433,14 @@ class ShiftByte(ShiftOp):
 		assert isinstance(read_on, ShiftOp.ClockMode)
 		assert isinstance(write_on, ShiftOp.ClockMode)
 
-		read_ops = self.din_pin.setup(BitDirection.input).splitlines() + self.din_pin.bit_to_carry().splitlines()
-		write_ops = self.dout_pin.setup(BitDirection.output).splitlines() + self.dout_pin.carry_to_bit().splitlines()
+		read_ops = self.din_pin.bit_to_carry().splitlines()
+		write_ops = self.dout_pin.carry_to_bit().splitlines()
+
+		# Do we need to change directions between read/write?
+		if self.din_pin == self.dout_pin:
+			if write_on != ShiftOp.ClockMode.none and read_on != ShiftOp.ClockMode.none:
+				read_ops = self.din_pin.setup(pins.PinDirection.input).splitlines() + read_ops
+				write_ops = self.dout_pin.setup(pins.PinDirection.output).splitlines() + write_ops
 
 		# Collect instructions on negative edge
 		neg_edge = []

@@ -9,12 +9,14 @@ Out on (+ve || -ve)
 
 """
 
+import pins
 import software as sw
+import calling
 
 # Create the shift byte commands
-clock = sw.BitAccessInASM("clk", sw.BitDirection.output, "A", 5)
-data_in = sw.BitAccessInASM("din", sw.BitDirection.input, "A", 3)
-data_out = sw.BitAccessInASM("dout", sw.BitDirection.output, "A", 2)
+clock = sw.BitAccessInASM("clk", pins.Pin("A", 5), pins.PinDirection.output)
+data_in = sw.BitAccessInASM("din", pins.Pin("A", 3), pins.PinDirection.input)
+data_out = sw.BitAccessInASM("dout", pins.Pin("A", 2), pins.PinDirection.output)
 
 byte_shifter = sw.ShiftByte(clock, data_in, data_out)
 
@@ -57,41 +59,13 @@ for d, read_on, write_on in combos:
 		name.append("outOnNeg")
 	name = "_".join(name)
 
-	defs = ''
-	args = ''
-	if read_on != sw.ShiftOp.ClockMode.none:
-		if write_on != sw.ShiftOp.ClockMode.none:
-			args = 'BYTE data'
-			defs = """
-	(data);
-	__asm__("mov	a,dpl");	/* Move data->a */
-"""
-		else:
-			defs = """
-	__asm__("clr	a");		/* Get accumulator ready */
-"""
+	body = byte_shifter.generate(d, read_on, write_on)
 
-		rettype = 'BYTE'
-		ret = """
-	__asm__("mov	dpl,a");		/* Move a->retvalue */
-	return;					/* return */
-"""
-	else:
-		rettype = 'void'
-		ret = 'return;'
-
-	output = "\n	".join(byte_shifter.generate(d, read_on, write_on))
-
-	print("""\
-/* ---------------------------- */
-%(rettype)s %(name)s(%(args)s) {
-	%(defs)s
-	%(output)s
-	%(ret)s
-}
-/* ---------------------------- */
-""" % locals())
-
+	print(calling.generate(
+		name=name,
+		read_on=read_on,
+		write_on=write_on,
+		body=body))
 
 print("""\
 BYTE main() {

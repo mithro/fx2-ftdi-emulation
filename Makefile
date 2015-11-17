@@ -4,7 +4,7 @@ FX2LIBDIR := ./fx2lib
 LIBS := $(FX2LIBDIR)/lib/fx2.lib
 INCS :=  -I$(FX2LIBDIR)/include
 
-CC_SRCS := descriptors.c bitbang/mpsse.c
+CC_SRCS := descriptors.c bitbang/mpsse.c bitbang/i2c.c
 CC_OBJS := $(CC_SRCS:%.c=%.rel)
 
 CC := sdcc
@@ -49,6 +49,9 @@ $(TARGET).hex: $(CC_OBJS)
 # Generate the bit banging code
 bitbang/mpsse.c: bitbang/*.py
 	cd bitbang; python3 mpsse.py > mpsse.c
+
+bitbang/i2c.c: bitbang/*.py
+	cd bitbang; python3 i2c.py > i2c.c
 
 # Generate the descriptor strings
 descriptors_strings.h: descriptors_string_table.py descriptors.strings
