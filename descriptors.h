@@ -1,14 +1,17 @@
 
 #include <stddef.h>
 
-#include "date.h"
-#include "uvclocal.h"
 #include "descriptors_strings.h"
 
+#include <linux/ftdi_sio_ids.h>
 #include <linux/ch9.h>
 #include <linux/ch9-extra.h>
 
 #ifndef DESCRIPTORS_H_
+#define DESCRIPTORS_H_
+
+#define PID 0x8a98
+#define DID 7
 
 struct usb_descriptors {
 	struct usb_device_descriptor device;
@@ -18,7 +21,7 @@ struct usb_descriptors {
 		struct usb_endpoint_descriptor endpoints0[2];
 		struct usb_interface_descriptor interface1;
 		struct usb_endpoint_descriptor endpoints1[2];
-	};
+	} highspeed;
 	struct usb_qualifier_descriptor qualifier;
 	WORD fullspeed;
 	struct usb_descriptors_strings strings;

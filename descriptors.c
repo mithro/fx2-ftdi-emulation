@@ -38,7 +38,7 @@ __code __at(DSCR_AREA) struct usb_descriptors code_descriptors = {
 			.bInterfaceClass	= USB_CLASS_VENDOR_SPEC,
 			.bInterfaceSubClass	= USB_SUBCLASS_VENDOR_SPEC,
 			.bInterfaceProtocol	= USB_PROTOCOL_VENDOR_SPEC,
-			.iInterface		= USB_STRING(1),
+			.iInterface		= USB_STRING_INDEX(1),
 		},
 		.endpoints0 = {
 			{
@@ -67,7 +67,7 @@ __code __at(DSCR_AREA) struct usb_descriptors code_descriptors = {
 			.bInterfaceClass	= USB_CLASS_VENDOR_SPEC,
 			.bInterfaceSubClass	= USB_SUBCLASS_VENDOR_SPEC,
 			.bInterfaceProtocol	= USB_PROTOCOL_VENDOR_SPEC,
-			.iInterface		= USB_STRING(1),
+			.iInterface		= USB_STRING_INDEX(1),
 		},
 		.endpoints1 = {
 			{
