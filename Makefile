@@ -10,7 +10,8 @@ CC_OBJS := $(CC_SRCS:%.c=%.rel)
 CC := sdcc
 
 # Compiler options
-CFLAGS += --verbose --std-c99 -mmcs51 -Wa"-p"
+CSTD=c99
+CFLAGS += --verbose --std-$(CSTD) -mmcs51 -Wa"-p"
 # Where to put things in the memory
 CFLAGS += --code-size 0x3e00 --xram-size 0x0200 -DDSCR_AREA=0x2e00 -Wl"-b INT2JT=0x3f00"
 
@@ -63,7 +64,7 @@ descriptors.c: descriptors_strings.h descriptors_strings.inc
 
 # Check the descriptors with GCC rather then sdcc
 check_descriptors: descriptors.c
-	gcc -std=c99 -Wall -Werror $(INCS) descriptors.c
+	gcc -std=$(CSTD) -Wall -Werror $(INCS) descriptors.c
 	@rm -f a.out
 
 # Check that the interrupt vector table ended up were we asked it too.
