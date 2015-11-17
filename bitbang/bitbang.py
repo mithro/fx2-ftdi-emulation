@@ -260,6 +260,19 @@ def asm_comment(s):
 	return '__asm__ ("	; %s");' % s.replace('\\', '\\\\')
 
 class ShiftByte(ShiftOp):
+	"""
+	The shift byte functions are built around the "rotate accumulator
+	through carry" operation and data is moved into / out of the carry bit.
+
+	      +---+---+---+---+---+---+---+---+      +---+
+	 /--> | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 | <--> | c | <--\
+	 |    +---+---+---+---+---+---+---+---+      +---+    |
+	 |                                                    |
+	 \----------------------------------------------------/
+
+	(1cy) RLC A - Rotate A left through carry
+	(1cy) RRC A - Rotate A right through carry
+	"""
 
 	def generate(self, direction, read_on, write_on, pad=True):
 		assert isinstance(direction, ShiftOp.FirstBit)
