@@ -43,6 +43,9 @@ $(TARGET).hex: $(CC_OBJS)
 %.rel: %.c
 	$(Q_CC)$(CC) $(CFLAGS) -c $(INCS) $?
 
+%.asm: %.c
+	$(Q_CC)$(CC) $(CFLAGS) -c $(INCS) $?
+
 # Generate the bit banging code
 bitbang/mpsse.c: bitbang/*.py
 	cd bitbang; python3 mpsse.py > mpsse.c
