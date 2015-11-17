@@ -8,9 +8,7 @@ The emulation has been created based on how two primary boards operate, both
 which have the FTDI FT2232H chip on them.
 
  * [Pipistrello](http://pipistrello.saanlima.com/index.php?title=Welcome_to_Pipistrello)
- * [TIAO USB Multi-Protocol Adapter (JTAG, SPI, I2C, Serial)]()
-
-
+ * [TIAO USB Multi-Protocol Adapter (JTAG, SPI, I2C, Serial)](http://www.diygadget.com/tiao-usb-multi-protocol-adapter-jtag-spi-i2c-serial.html)
 
 The secondary purpose is to allow easy interfacing to many common FPGA systems.
 
@@ -23,13 +21,20 @@ The boards supported are;
  * Numato Opsis
 
  * TODO: More? Should be able to support everything in ixo-usb-jtag.
+ * TODO: Xilinx Platform Cable
 
 The tools which have currently been tested are;
 
- * xc3sprogs
- * urjtag
- * OpenOCD
+ * TODO: xc3sprogs
+ * TODO: urjtag
+ * TODO: OpenOCD
 
  * TODO: More? Should be able supported by everything that also supports the
    [TIAO USB Multi-Protocol Adapter (JTAG, SPI, I2C, Serial)](http://www.tiaowiki.com/w/JTAG_Tutorials)
+
+
+# Third Party
+
+ * `libftdi.h` comes from http://www.intra2net.com/en/developer/libftdi/
+ * `ftdi_sio.h` and `ftdi_sio_ids.h` comes from Linux Kernel
 
