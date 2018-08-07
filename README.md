@@ -1,5 +1,10 @@
-This repository contains firmware for the [Cypress FX2]() which enables it to
-emulate much of the behaviour of the [FTDI serial converter chips]().
+# This repo is a **WIP**
+
+This repository is a **WIP** and currently does **not** work. I would love
+contributions to make it work.
+
+This repository aims to contains firmware for the [Cypress FX2]() which enables 
+it to emulate much of the behaviour of the [FTDI serial converter chips]().
 
 The primary purpose of this firmware is to enable the usage of the FX2 as a USB
 [JTAG programmer]() with many popular existing tools.
